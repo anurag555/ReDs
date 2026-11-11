@@ -1,0 +1,28 @@
+{
+  "video_id": "PkZNo7MFNFg",
+  "video_url": "https://www.youtube.com/watch?v=PkZNo7MFNFg",
+  "title": "Introduction to Binary Search | Concepts & Implementation",
+  "language": "en",
+  "transcript_type": "manual",
+  "segments": [
+    {
+      "start": 0.0,
+      "duration": 3.36,
+      "end": 3.36,
+      "text": "Hello everyone and welcome back to the course."
+    },
+    {
+      "start": 3.36,
+      "duration": 4.2,
+      "end": 7.56,
+      "text": "Today we are diving into Binary Search, a fundamental search algorithm."
+    },
+    {
+      "start": 7.56,
+      "duration": 5.1,
+      "end": 12.66,
+      "text": "Remember that binary search only works when the search space is sorted."
+    }
+  ]
+}
+

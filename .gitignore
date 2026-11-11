@@ -1,0 +1,29 @@
+# Environment
+backend/.env
+backend/.env.local
+
+# Node dependencies & builds
+backend/node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Local model cache (auto-downloaded by Xenova)
+backend/.cache/
+
+# Transcripts (large files, extract with extractor/process_playlist.py)
+data/transcripts/*.json
+!data/transcripts/.gitkeep
+!data/sample_transcript.json
+
+# Python caches (from extractor/)
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

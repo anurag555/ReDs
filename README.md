@@ -1,121 +1,146 @@
-# ReDs — AI-Powered Video Lecture RAG Search
+# ReDs — Semantic Video RAG for YouTube Playlists & Lectures
 
-ReDs is a minimal, high-speed Video RAG (Retrieval-Augmented Generation) search engine built specifically for **Striver's A2Z DSA Lecture Series**.
+ReDs is a minimal, local-first Video RAG (Retrieval-Augmented Generation) search tool designed for technical lecture series and long-form YouTube playlists.
 
-When you search for any problem or algorithmic concept, ReDs embeds your query, searches vector representations in **Qdrant**, synthesizes an explanation via **Groq (LLaMA-3.3-70B)**, and pinpoints the **top 3 precise video timestamps** to jump directly to where Striver explains it.
+Instead of scrubbing through dozens of multi-hour videos to find where a specific concept was discussed, ReDs searches across timestamped transcripts, performs semantic vector retrieval, and uses an LLM to pinpoint **3 progression timestamps** (Concept Intuition, Algorithm/Approach, and Code Walkthrough) so you can jump right to the relevant moment in an embedded player.
 
 ---
 
-## 📁 Architecture & Folder Structure
+## ⚡ How It Works
+
+```
+User Query ──► [Optional AI Query Normalizer] ──► [Local ONNX Embedding]
+                                                          │ (384-dim vector)
+                                                          ▼
+                                                  [Qdrant Vector DB]
+                                                          │ (Cosine search)
+                                                          ▼
+Nonsense / Off-Topic? ◄── [Score & Regex Guards] ── Top Chunks
+  (Clean 404 message)              │
+                                   ▼ (Passed threshold >= 0.32)
+                        [Groq LLM Reasoning]
+                                   │
+                                   ▼
+                 [3 Key Timestamps + Embedded Player]
+```
+
+---
+
+## 📁 Project Structure
 
 ```
 ReDs/
-├── backend/                  # Node.js + Express API Backend
-│   ├── .env                  # Environment secrets (Groq, Qdrant)
-│   ├── .env.example          # Environment template
-│   ├── package.json
-│   ├── src/
-│   │   ├── server.js         # Server entry point
-│   │   ├── routes/           # REST endpoints (/api/search, /api/health)
-│   │   ├── services/         # Embedding, Qdrant & Groq services
-│   │   └── utils/            # Time parsing & formatting utilities
-│   └── scripts/
-│       └── ingestTranscripts.js # Ingests 305 transcripts into Qdrant
+├── extractor/                 # Python transcript scraper
+│   ├── process_playlist.py    # Main playlist extraction CLI
+│   ├── transcript_extractor.py # Reusable YouTube transcript engine
+│   └── requirements.txt       # Python dependencies (yt-dlp, transcript API)
 │
-└── frontend/                 # React (Vite) Minimalist UI
-    ├── package.json
-    ├── vite.config.js        # Configured with proxy to port 5000
-    ├── index.html
-    └── src/
-        ├── App.jsx           # Main layout (Desktop split / Mobile popup)
-        ├── index.css         # Dark modern styling
-        └── components/
-            ├── SearchBar.jsx      # Search box & suggested DSA queries
-            ├── VideoPlayer.jsx    # 16:9 embedded player with timestamp jump
-            └── TimestampList.jsx  # Interactive 3-timestamp pills
+├── data/
+│   ├── transcripts/           # Where extracted JSON transcripts are stored
+│   └── sample_transcript.json # Reference format for transcript JSONs
+│
+├── backend/                   # Express.js REST API
+│   ├── src/
+│   │   ├── server.js          # App entry point (port 5000)
+│   │   ├── routes/            # /api/search, /api/health
+│   │   ├── services/          # Qdrant, Groq, Embedding & Query Understanding
+│   │   └── utils/             # Timestamp & time formatting helpers
+│   ├── scripts/
+│   │   └── ingestTranscripts.js # Chunker & vector upsert script for Qdrant
+│   ├── .env.example           # Environment template
+│   └── package.json
+│
+└── frontend/                  # React + Vite application
+    ├── src/
+    │   ├── App.jsx            # Split layout (Desktop) / Popup flow (Mobile)
+    │   ├── components/
+    │   │   ├── SearchBar.jsx  # Search box + AI Understanding toggle
+    │   │   ├── VideoPlayer.jsx # YouTube iframe with auto-seek
+    │   │   └── TimestampList.jsx # 3 interactive timestamp pills
+    │   └── index.css          # Minimal dark UI styles
+    ├── vite.config.js         # Proxies /api to backend:5000
+    └── package.json
 ```
 
 ---
 
-## ⚙️ Backend Setup (`ReDs/backend`)
+## 🛠️ Step 1: Extract YouTube Transcripts
 
-### 1. Environment Configuration (`.env`)
+Extract transcripts directly from any YouTube playlist using the included Python extractor:
 
-Open `ReDs/backend/.env` and insert your API keys:
+### 1. Install dependencies
+```bash
+pip install -r extractor/requirements.txt
+```
 
+### 2. Run the extractor
+```bash
+python extractor/process_playlist.py --playlist "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID"
+```
+
+Useful flags:
+- `--delay 2.0`: Seconds to wait between requests (default: 2.0s, helps avoid YouTube rate-limits).
+- `--cooldown 60`: Cooldown time if temporary IP throttling occurs.
+- `--output data/transcripts`: Target directory (defaults automatically to `data/transcripts/`).
+
+> **Resumable**: If interrupted or rate-limited, re-run the same command anytime. It skips videos that have already been saved to disk.
+
+---
+
+## 🗄️ Step 2: Configure & Ingest into Qdrant
+
+### 1. Configure the Backend `.env`
+```bash
+cd backend
+cp .env.example .env
+```
+
+Add your keys to `backend/.env`:
 ```env
 PORT=5000
 
-# Groq API Key (Get free key at: https://console.groq.com)
-GROQ_API_KEY=gsk_your_groq_api_key_here
+# Free Groq key from https://console.groq.com/keys
+GROQ_API_KEY=gsk_your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
 
-# Qdrant Vector Database
-# Local Qdrant (Docker): http://localhost:6333
-# Qdrant Cloud: https://<cluster-id>.<region>.cloud.qdrant.io:6333
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=
-
+# Qdrant Vector Database (Local Docker or free Qdrant Cloud)
+QDRANT_URL=https://your-cluster.cloud.qdrant.io:6333
+QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_COLLECTION=reds_striver_dsa
+
+# Embedding Model (runs locally in Node via ONNX; no key needed)
 EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
 ```
 
-> **Note on Embeddings:** ReDs generates high-speed 384-dimensional vector embeddings locally using `@xenova/transformers` (ONNX runtime in Node.js). You do not need a paid OpenAI embedding key.
-
----
-
-### 2. Ingesting Transcripts into Qdrant
-
-To chunk and vectorize the 305 extracted Striver DSA transcripts into Qdrant:
-
+### 2. Ingest Transcripts
 ```bash
-cd ReDs/backend
 npm run ingest
 ```
-
-This script:
-1. Connects to your Qdrant instance.
-2. Creates the collection `reds_striver_dsa` with Cosine distance.
-3. Chunks the 305 transcripts into time windows (60–90 seconds).
-4. Generates dense vector embeddings.
-5. Upserts points into Qdrant with rich payload metadata (video ID, title, start seconds, timestamp URL).
+This reads all JSON files in `data/transcripts/`, chunks them into 90-second overlapping windows, computes 384-dimensional embeddings locally, and upserts them into Qdrant with timestamp metadata.
 
 ---
 
-### 3. Start the Backend Server
+## 🚀 Step 3: Run the Application
 
+### 1. Start the Backend API
 ```bash
-cd ReDs/backend
+cd backend
 npm start
+# Server starts at http://localhost:5000
 ```
 
-The backend starts on `http://localhost:5000`.  
-Check status anytime at: `http://localhost:5000/api/health`.
-
----
-
-## 💻 Frontend Setup (`ReDs/frontend`)
-
-### 1. Start the React App
-
+### 2. Start the Frontend UI
 ```bash
-cd ReDs/frontend
+cd ../frontend
 npm run dev
+# App starts at http://localhost:3000
 ```
-
-The app will open at: `http://localhost:3000`.
 
 ---
 
-## 📱 User Experience & Features
+## 🧠 Key Highlights
 
-* **Desktop View:**
-  * Clean, minimal split-screen design.
-  * Left: Search bar with instant suggestions + AI explanation summary.
-  * Right: Dedicated video player window that embeds YouTube and immediately seeks to the chosen timestamp.
-  * 3 Interactive Timestamp Pills: Click any pill to jump to that moment in the video.
-
-* **Mobile View:**
-  * Minimal, distraction-free search interface.
-  * On search, the video window pops up with the 3 timestamps directly underneath.
-  * A "New Query" button allows one-tap reset to search again.
-
+- **Local ONNX Embeddings**: Runs `all-MiniLM-L6-v2` locally in Node via `@xenova/transformers`. Zero embedding API costs.
+- **Optional AI Query Understanding**: Toggle switch in the search bar. When enabled, Groq normalizes shorthand/abbreviations before search; cached in-memory for 0ms replay.
+- **Strict Query Guards**: Regex pre-check + 0.32 Cosine Similarity Floor ensures gibberish (`"abba dabba chabba"`) or off-topic queries are gracefully rejected without hallucinating lecture matches.
+- **Embedded Player**: Seamless YouTube iframe seeks directly to selected timestamp seconds.

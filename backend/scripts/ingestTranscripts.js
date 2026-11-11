@@ -11,7 +11,12 @@ import { formatSeconds } from '../src/utils/timeUtils.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const TRANSCRIPTS_DIR = path.resolve(__dirname, '../../../data/algo_recall_transcripts');
+// Primary directory inside ReDs/data/transcripts, with fallback to legacy root data path
+const PRIMARY_DIR = path.resolve(__dirname, '../../data/transcripts');
+const LEGACY_DIR = path.resolve(__dirname, '../../../data/algo_recall_transcripts');
+const TRANSCRIPTS_DIR = (fs.existsSync(PRIMARY_DIR) && fs.readdirSync(PRIMARY_DIR).some((f) => f.endsWith('.json') && f !== 'manifest.json'))
+  ? PRIMARY_DIR
+  : LEGACY_DIR;
 
 /**
  * Creates overlapping time-windowed chunks from raw subtitle segments.
